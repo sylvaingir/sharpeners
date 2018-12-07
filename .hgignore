@@ -1,0 +1,5 @@
+syntax: glob
+sharpeners.tests/bin
+sharpeners.tests/obj
+sharpeners/bin
+sharpeners/obj
