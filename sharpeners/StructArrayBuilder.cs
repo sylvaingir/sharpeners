@@ -203,6 +203,22 @@ namespace sharpeners {
             return Capacity;
         }
 
+        public long MemSize{ 
+            get {
+                var tSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(T));
+                var size=0L;
+                var chunk = this;
+                do{
+                    size += tSize * chunk.m_ChunkValues.Length;
+                    if(chunk.m_ChunkReferences != null){
+                        // key: short=2bytes | value: reference=8bytes
+                        size += chunk.m_ChunkReferences.Count * (2 + 8);
+                    }
+                    chunk = chunk.m_ChunkPrevious;
+                }while(chunk != null);
+                return size;
+            }
+        }
         
         public T[] ToArray() {
 
@@ -750,7 +766,7 @@ namespace sharpeners {
             }
 
             if (count < 0 || startIndex > currentLength - count) {
-                throw new ArgumentOutOfRangeException("count", "Count cannot be negative or imply replacing more values than there arw");
+                throw new ArgumentOutOfRangeException("count", "Count cannot be negative or imply replacing more values than there are");
             }
             if (oldValues == null)
             {
@@ -833,7 +849,7 @@ namespace sharpeners {
             }
 
             if (count < 0 || startIndex > currentLength - count) {
-                throw new ArgumentOutOfRangeException("count", "Count cannot be negative or imply replacing more values than there arw");
+                throw new ArgumentOutOfRangeException("count", "Count cannot be negative or imply replacing more values than there are");
             }
 
             int endIndex = startIndex + count;            
@@ -991,7 +1007,8 @@ namespace sharpeners {
             //     The search will go 17 --previous-> 16 --(lookup k=4|d=16, k=3|d=8)-> 8
             //     Result: 3 operations instead of 9
             var ret = this;
-            Console.WriteLine("1. Idx:"+ret.m_ChunkIndex);
+            // Console.WriteLine("1. Idx:"+ret.m_ChunkIndex);
+            // Console.WriteLine("1. L:"+ret.m_ChunkLength);
             while (ret.m_ChunkOffset > index){
                 if(ret.m_ChunkReferences != null && ret.m_ChunkReferences.Count > 0 ){
                     var curr = ret;
@@ -1003,13 +1020,15 @@ namespace sharpeners {
                         }
                         if(ret.m_ChunkReferences == null){
                             ret = ret.m_ChunkPrevious;
-                            Console.WriteLine("2. Idx:"+ret.m_ChunkIndex);
+                            // Console.WriteLine("2. Idx:"+ret.m_ChunkIndex);
+                            // Console.WriteLine("2. L:"+ret.m_ChunkLength);
                             break;
                         }else if(ret.m_ChunkReferences[k].m_ChunkOffset < index){
                             continue;
                         }else{
                             ret = ret.m_ChunkReferences[k];
-                            Console.WriteLine("3. Idx:"+ret.m_ChunkIndex);
+                            // Console.WriteLine("3. Idx:"+ret.m_ChunkIndex);
+                            // Console.WriteLine("3. L:"+ret.m_ChunkLength);
                             break;
                         }
                     }
@@ -1020,15 +1039,18 @@ namespace sharpeners {
                     // then it can only mean that it is our previous one, since even the chunk at distance 2 would have been caught
                     if(ret == this){
                         ret = ret.m_ChunkPrevious;    
-                        Console.WriteLine("4. Idx:"+ret.m_ChunkIndex);
+                        // Console.WriteLine("4. Idx:"+ret.m_ChunkIndex);
+                        // Console.WriteLine("4. L:"+ret.m_ChunkLength);
                     }
                 }else{
                     ret = ret.m_ChunkPrevious;
-                    Console.WriteLine("5. Idx:"+ret.m_ChunkIndex);
+                    // Console.WriteLine("5. Idx:"+ret.m_ChunkIndex);
+                    // Console.WriteLine("5. L:"+ret.m_ChunkLength);
                 }
             }
                 
-            Console.WriteLine("6. Idx:"+ret.m_ChunkIndex);
+            // Console.WriteLine("6. Idx:"+ret.m_ChunkIndex);
+            // Console.WriteLine("6. L:"+ret.m_ChunkLength);
             return ret;
         }
 
@@ -1067,6 +1089,7 @@ namespace sharpeners {
             int newBlockLength = Math.Max(minBlockCharCount, Math.Min(Length, MaxChunkSize));
 
             // Copy the current block to the new block, and initialize this to point at the new buffer. 
+            var myPrevious = m_ChunkPrevious;
             m_ChunkPrevious = new StructArrayBuilder<T>(this);
             m_ChunkOffset += m_ChunkLength;
             m_ChunkLength = 0;
@@ -1074,7 +1097,7 @@ namespace sharpeners {
             //populate skip list for current chunk
             m_ChunkIndex++;
             if(useSkipLists){
-                m_ChunkReferences = PopulateSkipLists(m_ChunkIndex, m_ChunkPrevious);
+                m_ChunkReferences = PopulateSkipLists(m_ChunkIndex, myPrevious);
             }
 
             // Check for integer overflow (logical buffer size > int.MaxInt)
@@ -1121,27 +1144,23 @@ namespace sharpeners {
                     d = (int)Math.Pow(2, n);
                     if(n == 1){
                         myReferences[n] = previous;
-                    }else if(currentChunk != null && chunkIndex % d == 0 ){
+                    }else if(chunkIndex % d == 0 ){
                         var previousN =(ushort)(n-1);
-                        if(previous.m_ChunkReferences != null && previous.m_ChunkReferences.ContainsKey(previousN)){
+                        if(previous.m_ChunkReferences.ContainsKey(previousN)){
                             myReferences[n] = previous.m_ChunkReferences[previousN];
                         } else{
-
                             do{
                                 currentIndex-=2;
-                                currentChunk = currentChunk.m_ChunkPrevious == null ? null : currentChunk.m_ChunkPrevious.m_ChunkPrevious;
-                            }while( currentIndex > 0 && 
+                                currentChunk = currentChunk.m_ChunkPrevious.m_ChunkPrevious;
+                            }while(currentIndex > 0 && 
                                 currentChunk != null && 
-                                (currentChunk.m_ChunkReferences == null || 
-                                !currentChunk.m_ChunkReferences.ContainsKey(previousN)));
+                                !currentChunk.m_ChunkReferences.ContainsKey(previousN));
 
-                            if(currentChunk != null && currentChunk.m_ChunkReferences != null){
-                                myReferences[n] =  currentChunk.m_ChunkReferences[previousN];
-                            }
+                            myReferences[n] = currentChunk.m_ChunkReferences[previousN];
                         }
                     }
                     n++;
-                }while(d < chunkIndex);                
+                }while(d < chunkIndex && previous.m_ChunkReferences != null );
             } 
             return myReferences;
         }
@@ -1161,7 +1180,7 @@ namespace sharpeners {
         /// </summary>
         private void MakeRoom(int index, int count, out StructArrayBuilder<T> chunk, out int indexInChunk, bool doneMoveFollowingChars)
         {
-            chunk = null;
+            chunk = this;
             indexInChunk = -1;
             if(count <=0 || index < 0){
                 return;
@@ -1169,7 +1188,6 @@ namespace sharpeners {
             if (count + Length < count || count + Length > m_MaxCapacity)
                 throw new ArgumentOutOfRangeException("requiredLength",  "Cannot expand beyond max capacity");
 
-            chunk = FindChunkForIndex(index);
             while (chunk.m_ChunkOffset > index)
             {
                 chunk.m_ChunkOffset += count;
@@ -1254,7 +1272,6 @@ namespace sharpeners {
             int endIndex = startIndex + count;
 
             // Find the chunks for the start and end of the block to delete. 
-            chunk = FindChunkForIndex(endIndex);
             StructArrayBuilder<T> endChunk = null;
             int endIndexInChunk = 0;
             for (; ; )
