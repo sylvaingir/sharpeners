@@ -73,7 +73,10 @@ namespace sharpeners {
         // In StructArrayBuilder this is set to 8000, which is a compromise between less allocation as possible and as fast as possible inserts/replace.
         // In this case the struct can be of any size. In cade of Decimal, it's 16 bytes, and custom structs are likely to be at that size, or bigger
         // so we take a smaller max chunk zise
-        internal const int MaxChunkSize = 2000;
+        internal const int MaxChunkSize = 2000;        
+        
+        //
+        internal const int SkipListUsageMinimumIndex = 400;
 
         //
         //
@@ -1006,13 +1009,23 @@ namespace sharpeners {
             // 3. Chunk to find=8, Current chunk=17
             //     The search will go 17 --previous-> 16 --(lookup k=4|d=16, k=3|d=8)-> 8
             //     Result: 3 operations instead of 9
+            //
+            // However, testing shows that skiplist start to provide a performance boost
+            // when the number of chunks gets bigger than 300-400, and is clearly faster by 500 chunks.
+            // StructArrayBuilder this size are huge: that's around 1,000,000 elements
+            // So here, we use this threshold to use simple, fast full list traversal on small/"normal"
+            // size, and switch to skip list when over
+
             var ret = this;
-            // Console.WriteLine("1. Idx:"+ret.m_ChunkIndex);
-            // Console.WriteLine("1. L:"+ret.m_ChunkLength);
+            
             while (ret.m_ChunkOffset > index){
-                if(ret.m_ChunkReferences != null && ret.m_ChunkReferences.Count > 0 ){
+
+                // Check if we have to use the skip lists, and if we can actually do it
+                if(ret.m_ChunkIndex > SkipListUsageMinimumIndex && 
+                   ret.m_ChunkReferences != null && 
+                   ret.m_ChunkReferences.Count > 0 )
+                {
                     var curr = ret;
-                    //var keys = ret.m_ChunkReferences.Keys.ToList();
 
                     foreach(var k in ret.m_ChunkReferences.Keys){
                         if(ret.m_ChunkIndex == 0){
@@ -1020,15 +1033,11 @@ namespace sharpeners {
                         }
                         if(ret.m_ChunkReferences == null){
                             ret = ret.m_ChunkPrevious;
-                            // Console.WriteLine("2. Idx:"+ret.m_ChunkIndex);
-                            // Console.WriteLine("2. L:"+ret.m_ChunkLength);
                             break;
                         }else if(ret.m_ChunkReferences[k].m_ChunkOffset < index){
                             continue;
                         }else{
                             ret = ret.m_ChunkReferences[k];
-                            // Console.WriteLine("3. Idx:"+ret.m_ChunkIndex);
-                            // Console.WriteLine("3. L:"+ret.m_ChunkLength);
                             break;
                         }
                     }
@@ -1039,18 +1048,11 @@ namespace sharpeners {
                     // then it can only mean that it is our previous one, since even the chunk at distance 2 would have been caught
                     if(ret == this){
                         ret = ret.m_ChunkPrevious;    
-                        // Console.WriteLine("4. Idx:"+ret.m_ChunkIndex);
-                        // Console.WriteLine("4. L:"+ret.m_ChunkLength);
                     }
                 }else{
                     ret = ret.m_ChunkPrevious;
-                    // Console.WriteLine("5. Idx:"+ret.m_ChunkIndex);
-                    // Console.WriteLine("5. L:"+ret.m_ChunkLength);
                 }
-            }
-                
-            // Console.WriteLine("6. Idx:"+ret.m_ChunkIndex);
-            // Console.WriteLine("6. L:"+ret.m_ChunkLength);
+            }                
             return ret;
         }
 
@@ -1263,7 +1265,7 @@ namespace sharpeners {
         /// </summary>
         private void Remove(int startIndex, int count, out StructArrayBuilder<T> chunk, out int indexInChunk)
         {
-            chunk = null;
+            chunk = this;
             indexInChunk = -1;
             if(startIndex < 0 || startIndex >= Length){
                 return;
