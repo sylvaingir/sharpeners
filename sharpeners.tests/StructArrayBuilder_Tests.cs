@@ -46,16 +46,16 @@ namespace sharpeners.tests
         public void CheckReadExecTime_Multiple ()
         {
             foreach(var numValues in new[]{
-                100,
-                //1000,
+                //100,
+                1000,
                 //10000, 
                 //100000,                 
                 //1000000, 
                 //10000000,                 
                 //100000000  
                 }){
-                CheckReadExecTime(false, numValues, action: "read");
-                CheckReadExecTime(true, numValues, action: "read");
+                CheckReadExecTime(false, numValues, action: "replace");
+                CheckReadExecTime(true, numValues, action: "replace");
             }
         }
 
@@ -94,13 +94,19 @@ namespace sharpeners.tests
             var chunksToAction = (int)(percentOfChunksToAction*numberOfChunks/100);
             switch(action){
                 case "insert":                    
+                    var valuesToInsert = Enumerable.Repeat(0M, 10).Select( (d, idx) => (decimal)idx ).ToArray();
                     for(var l = 0; l<chunksToAction; l++){
-                        builder.Insert(10, Enumerable.Repeat(0M, 10).Select( (d, idx) => (decimal)idx ).ToArray());
+                        builder.Insert(10, valuesToInsert);
                     }
                     break;
                 case "remove":                    
                     for(var l = 0; l<chunksToAction; l++){
                         builder.Remove(10, chunkSize);
+                    }
+                    break;
+                case "replace":               
+                    for(var l = 0; l<=100000; l++){
+                        builder.Replace(l, 0);
                     }
                     break;
                 case "read":
@@ -143,6 +149,13 @@ namespace sharpeners.tests
                             Assert.Equal(expectedResult[idx], result);
                         }else if( idx >= 10 && idx < (numValues- chunksToAction*10)){
                             Assert.Equal(expectedResult [idx + (chunksToAction * chunkSize) ], result);
+                        }
+                        break;
+                    case "replace" :
+                        if(expectedResult[idx] <= 100000){
+                            Assert.Equal(0, result);
+                        }else{
+                            Assert.Equal(expectedResult [idx], result);
                         }
                         break;
                 }
