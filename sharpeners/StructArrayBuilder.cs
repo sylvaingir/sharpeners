@@ -13,7 +13,7 @@ using System.Linq;
 namespace sharpeners {
 
     // This class represents a mutable array of value types and structs. 
-    // The VAST majority of this code is based on the StringBuilder implementation from Micrsosoft,
+    // The VAST majority of this code is based on the StringBuilder implementation from Microsoft,
     // so much that the documentation might still reference strings and characters... :S 
     // The unsafe code was removed to use only managed code, as well as string-oriented methods.
     // 
@@ -26,17 +26,17 @@ namespace sharpeners {
     // which is the point in reusing it there. That means that Append operations are typically fast. 
     // On the other hand, modifications of the instance (like Insert, Replace, Remove) not so much, and frequent 
     // Read operations are clearly expensive. The reason for the good and bad things is rooted in the design, 
-    // which is a linked list of StringBuilder, with the important detail that is "reversed": the head of
+    // which is a linked list of StringBuilder, with the important detail that it is "reversed": the head of
     // the list is actually the "end" (ie the last appended segment) of the array, in order to speed up Append operations.
     //
-    // This implementation for value types try to optimize the problems related to the "bad" parts of the original implementation 
+    // This implementation for value types tries to help with the problems related to the original implementation 
     // by conceptually extending the basic linked list to a skip list (see https://en.wikipedia.org/wiki/Skip_list), 
-    // to speed up traversal for index-based operations.
+    // to speed up traversal for index-based operations. 
     //
-    // The references of farther away "chunks" are kept in a dictionary for every other chunk. Also, references higher 
-    // order references are added every time the list size doubles. The references direct, one-to-one references 
+    // The references of farther away "chunks" are kept in a dictionary for every other chunk. Also, higher 
+    // order references are added every time the list size doubles. The direct, one-to-one references 
     // are still done with m_ChunkPrevious as originally implemented in StringBuilder, but higher order references 
-    // are kept in the dictionary. The dictionaries themselves are quite small as possible by using ushort for the keys,
+    // are kept in a dictionary. The dictionaries themselves are kepts as small as possible by using ushort for the keys,
     // which represent the exponent used for the power to base 2
     // Ex: With a StructArrayBuilder of 21 chunks, the references are as below
     //                     16---------------------------------------------------->0 k = 4
@@ -44,20 +44,35 @@ namespace sharpeners {
     //     20------------->16------------->12------------>8---------->4---------->0 k = 2
     //     20----->18----->16----->14----->12----->10---->8---->6---->4---->2---->0 k = 1
     // 21->20->19->18->17->16->15->14->13->12->11->10->9->8->7->6->5->4->3->2->1->0 
+    //
+    // The resulting implementation uses the original traversal method for sizes below 400 chunks, 
+    // since each traversal operation is in itself extremely fast since is is just a reference change and a simple condition,
+    // compared to looking up in the dictionary (although the execution time difference is (in absolute terms) minor). 
+    // It switches to skip list traversal when the number of chunks is high, which essentially provides constant 
+    // Read execution, even for far-off chunks (like the first values in the mutable array)
+    //
+    // Insert and Remove operations do not benefit from the implementation. They need full traversal up to the 
+    // matching chunks, since the change in the overall length needs to ne propagated down to all chunks. Also, 
+    // they theorically degrade the performance of Read operations since the distribution of the rapidly skipable
+    // items loses consistency, although I couldn't measure any real effect.
+    // 
+    // For my needs though, this provides a clear improvement, since I can now re-implement another core object,
+    // the MemoryStream, by using a StructArrayBuilder<byte> as the underlying storage without running into
+    // the memory problems of having a simple immutable array, and still maintain fast Stream.Write and Stream.Read 
+    // operations
     public class StructArrayBuilder<T>  where T : struct    {
         // A StructArrayBuilder is internally represented as a linked list of blocks each of which holds
-        // a chunk of the string.  It turns out string as a whole can also be represented as just a chunk, 
-        // so that is what we do.  
+        // a chunk of the array.   
 
         //
         //
         //  CLASS VARIABLES
         //
         //
-        internal T[] m_ChunkValues;                // The characters in this block
+        internal T[] m_ChunkValues;                // The items in this block
         internal StructArrayBuilder<T> m_ChunkPrevious;      // Link to the block logically before this block
         internal int m_ChunkLength;                  // The index in m_ChunkChars that represent the end of the block
-        internal int m_ChunkOffset;                  // The logial offset (sum of all characters in previous blocks)
+        internal int m_ChunkOffset;                  // The logial offset (sum of all items in previous blocks)
         internal int m_MaxCapacity = 0;
         internal int m_ChunkIndex;
         internal SortedDictionary<ushort, StructArrayBuilder<T>> m_ChunkReferences;
@@ -70,7 +85,7 @@ namespace sharpeners {
         internal const int DefaultCapacity = 16;
 
         // We want to keep chunk arrays out of large object heap (< 85K bytes ~ 40K chars) to be sure.
-        // In StructArrayBuilder this is set to 8000, which is a compromise between less allocation as possible and as fast as possible inserts/replace.
+        // In StringBuilder this is set to 8000, which is a compromise between less allocation as possible and as fast as possible inserts/replace.
         // In this case the struct can be of any size. In cade of Decimal, it's 16 bytes, and custom structs are likely to be at that size, or bigger
         // so we take a smaller max chunk zise
         internal const int MaxChunkSize = 2000;        
@@ -85,7 +100,7 @@ namespace sharpeners {
         //
 
         // Creates a new empty array builder 
-        // with the default capacity (16 characters).
+        // with the default capacity (16 items).
         public StructArrayBuilder(bool useSkipLists =true)
             : this(DefaultCapacity) {
             this.useSkipLists=useSkipLists;
@@ -357,8 +372,8 @@ namespace sharpeners {
                 // if the specified length is greater than the current length
                 if (delta > 0)
                 {
-                    // the end of the string value of the current StructArrayBuilder object is padded with the Unicode NULL character
-                    Append(default(T), delta);        // We could improve on this, but who does this anyway?
+                    // ... then we add default values for the difference
+                    Append(default(T), delta);        
                 }
                 // if the specified length is less than or equal to the current length
                 else
@@ -449,8 +464,7 @@ namespace sharpeners {
             return this;
         }
 
-        // Appends an array of characters at the end of this array builder. The capacity is adjusted as needed. 
-        
+        // Appends an array of items at the end of this array builder. The capacity is adjusted as needed. 
         public StructArrayBuilder<T> Append(T[] values, int startIndex, int count) {
             if (startIndex < 0) {
                 throw new ArgumentOutOfRangeException("startIndex", "Start index must be positive");
@@ -584,12 +598,10 @@ namespace sharpeners {
             }
         }
 
-        // Inserts multiple copies of a string into this array builder at the specified position.
-        // Existing characters are shifted to make room for the new text.
+        // Inserts multiple copies of an array into this array builder at the specified position.
+        // Existing items are shifted to make room for the new values.
         // The capacity is adjusted as needed. If value equals String.Empty, this
         // array builder is not changed. 
-        // 
-        
         public StructArrayBuilder<T> Insert(int index, T[] values, int count) {
             if (count < 0) {
                 throw new ArgumentOutOfRangeException("count", "Count must be positive");
@@ -605,8 +617,8 @@ namespace sharpeners {
                 return this;
             }
 
-            //Ensure we don't insert more chars than we can hold, and we don't 
-            //have any integer overflow in our inserted characters.
+            //Ensure we don't insert more items than we can hold, and we don't 
+            //have any integer overflow in our inserted items.
             long insertingValues = (long) values.Length * count;
             if (insertingValues > MaxCapacity - this.Length) {
                 throw new OutOfMemoryException();
@@ -623,7 +635,7 @@ namespace sharpeners {
             return this;
         }
 
-        // Removes the specified characters from this array builder.
+        // Removes the specified items from this array builder.
         // The length of this array builder is reduced by 
         // length, but the capacity is unaffected.
         // 
@@ -661,8 +673,8 @@ namespace sharpeners {
         ==============================================================================*/
 
         // Returns a reference to the StructArrayBuilder with ; value inserted into 
-        // the buffer at index. Existing characters are shifted to make room for the new text.
-        // The capacity is adjusted as needed. If value equals String.Empty, the
+        // the buffer at index. Existing items are shifted to make room for the new text.
+        // The capacity is adjusted as needed. If values is empty, the
         // StructArrayBuilder is not changed.
         // 
         public StructArrayBuilder<T> Insert(int index, T[] values) {
@@ -675,10 +687,10 @@ namespace sharpeners {
             return this;
         }
 
-        // Returns a reference to the StructArrayBuilder with count characters from 
-        // value inserted into the buffer at index.  Existing characters are shifted
+        // Returns a reference to the StructArrayBuilder with count items from 
+        // value inserted into the buffer at index.  Existing items are shifted
         // to make room for the new text and capacity is adjusted as required.  If value is null, the StructArrayBuilder
-        // is unchanged.  Characters are taken from value starting at position startIndex.
+        // is unchanged.  items are taken from value starting at position startIndex.
         
         public StructArrayBuilder<T> Insert(int index, T[] values, int startIndex, int count) {
 
@@ -890,10 +902,10 @@ namespace sharpeners {
             var targetChunk = sourceChunk;        // the target as we copy chars down
             int targetIndexInChunk = replacements[0];
 
-            // Make the room needed for all the new characters if needed. 
+            // Make the room needed for all the new items if needed. 
             if (delta > 0)
                 MakeRoom(targetChunk.m_ChunkOffset + targetIndexInChunk, delta, out targetChunk, out targetIndexInChunk, true);
-            // We made certain that characters after the insertion point are not moved, 
+            // We made certain that items after the insertion point are not moved, 
             int i = 0;
             for (; ; )
             {
@@ -953,8 +965,8 @@ namespace sharpeners {
 
         /// <summary>
         /// ReplaceInPlaceAtChunk is the logical equivalent of 'memcpy'.  Given a chunk and ann index in
-        /// that chunk, it copies in 'count' characters from 'value' and updates 'chunk, and indexInChunk to 
-        /// point at the end of the characters just copyied (thus you can splice in strings from multiple 
+        /// that chunk, it copies in 'count' items from 'value' and updates 'chunk, and indexInChunk to 
+        /// point at the end of the items just copyied (thus you can splice in strings from multiple 
         /// places by calling this mulitple times.  
         /// </summary>
         private void ReplaceInPlaceAtChunk(ref StructArrayBuilder<T> chunk, ref int indexInChunk, T[] values, int count)
@@ -986,7 +998,7 @@ namespace sharpeners {
 
 
         /// <summary>
-        /// Finds the chunk for the logical index (number of characters in the whole StructArrayBuilder) 'index'
+        /// Finds the chunk for the logical index (number of items in the whole StructArrayBuilder) 'index'
         /// YOu can then get the offset in this chunk by subtracting the m_BlockOffset field from 'index' 
         /// </summary>
         /// <param name="index"></param>
@@ -1071,8 +1083,8 @@ namespace sharpeners {
 
         /// <summary>
         /// Assumes that 'this' is the last chunk in the list and that it is full.  Upon return the 'this'
-        /// block is updated so that it is a new block that has at least 'minBlockCharCount' characters.
-        /// that can be used to copy characters into it.   
+        /// block is updated so that it is a new block that has at least 'minBlockCharCount' items.
+        /// that can be used to copy items into it.   
         /// </summary>
         private void ExpandByABlock(int minBlockCharCount)
         {
@@ -1168,7 +1180,7 @@ namespace sharpeners {
         }
 
         /// <summary>
-        /// Creates a gap of size 'count' at the logical offset (count of characters in the whole string
+        /// Creates a gap of size 'count' at the logical offset (count of items in the whole string
         /// builder) 'index'.  It returns the 'chunk' and 'indexInChunk' which represents a pointer to
         /// this gap that was just created.  You can then use 'ReplaceInPlaceAtChunk' to fill in the
         /// chunk
@@ -1220,7 +1232,7 @@ namespace sharpeners {
             if (copyCount1 > 0)
             {
                 Array.Copy(chunk.m_ChunkValues, 0, newChunk.m_ChunkValues, 0, copyCount1);
-                // Slide characters in the current buffer over to make room. 
+                // Slide items in the current buffer over to make room. 
                 int copyCount2 = indexInChunk - copyCount1;
                 if (copyCount2 >= 0)
                 {
@@ -1260,7 +1272,7 @@ namespace sharpeners {
         }
 
         /// <summary>
-        /// Removes 'count' characters from the logical index 'startIndex' and returns the chunk and 
+        /// Removes 'count' items from the logical index 'startIndex' and returns the chunk and 
         /// index in the chunk of that logical index in the out parameters.  
         /// </summary>
         private void Remove(int startIndex, int count, out StructArrayBuilder<T> chunk, out int indexInChunk)
@@ -1303,10 +1315,10 @@ namespace sharpeners {
             if (endChunk != chunk)
             {
                 copyTargetIndexInChunk = 0;
-                // Remove the characters after startIndex to end of the chunk
+                // Remove the items after startIndex to end of the chunk
                 chunk.m_ChunkLength = indexInChunk;
 
-                // Remove the characters in chunks between start and end chunk
+                // Remove the items in chunks between start and end chunk
                 endChunk.m_ChunkPrevious = chunk;
                 endChunk.m_ChunkOffset = chunk.m_ChunkOffset + chunk.m_ChunkLength;
 
@@ -1322,7 +1334,7 @@ namespace sharpeners {
             // SafeCritical: We ensure that endIndexInChunk + copyCount is within range of m_ChunkValues and
             // also ensure that copyTargetIndexInChunk + copyCount is within the chunk
             //
-            // Remove any characters in the end chunk, by sliding the characters down. 
+            // Remove any items in the end chunk, by sliding the items down. 
             if (copyTargetIndexInChunk != endIndexInChunk)  // Sometimes no move is necessary
                 Array.Copy(endChunk.m_ChunkValues, endIndexInChunk, endChunk.m_ChunkValues, copyTargetIndexInChunk, copyCount);
 
