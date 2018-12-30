@@ -102,33 +102,32 @@ namespace sharpeners {
         // Creates a new empty array builder 
         // with the default capacity (16 items).
         public StructArrayBuilder(bool useSkipLists =true)
-            : this(DefaultCapacity) {
-            this.useSkipLists=useSkipLists;
+            : this(DefaultCapacity, useSkipLists) {
         }
 
         // Create a new empty array builder
         // with the specified capacity.
-        public StructArrayBuilder(int capacity)
-            : this(null, capacity) {
+        public StructArrayBuilder(int capacity, bool useSkipLists =true)
+            : this(null, capacity, useSkipLists) {
         }
 
         // Creates a new array builder from the specified array
         // with the default capacity
-        public StructArrayBuilder(T[] values)
-            : this(values, DefaultCapacity) {
+        public StructArrayBuilder(T[] values, bool useSkipLists =true)
+            : this(values, DefaultCapacity, useSkipLists) {
         }
 
         // Creates a new array builder from the specified array
         //  with the specified capacity. 
-        public StructArrayBuilder(T[] values, int capacity)
-            : this(values, 0, ((values != null) ? values.Length : 0), capacity) {
+        public StructArrayBuilder(T[] values, int capacity, bool useSkipLists =true)
+            : this(values, 0, ((values != null) ? values.Length : 0), capacity, useSkipLists) {
         }
 
         // Creates a new array builder from the specifed sub array with the specified
         // capacity.  The maximum number of element is set by capacity.
         // 
         
-        public StructArrayBuilder(T[] values, int startIndex, int length, int capacity) {
+        public StructArrayBuilder(T[] values, int startIndex, int length, int capacity, bool useSkipLists =true) {
             if (capacity<0) {
                 throw new ArgumentOutOfRangeException("capacity","Capacity must be positive");
             }
@@ -146,6 +145,8 @@ namespace sharpeners {
                 throw new ArgumentOutOfRangeException("length");
             }
 
+            this.useSkipLists = useSkipLists;
+
             m_MaxCapacity = Int32.MaxValue;
             if (capacity == 0) {
                 capacity = DefaultCapacity;
@@ -162,7 +163,7 @@ namespace sharpeners {
 
         // Creates an empty StructArrayBuilder with a minimum capacity of capacity
         // and a maximum capacity of maxCapacity.
-        public StructArrayBuilder(int capacity, int maxCapacity) {
+        public StructArrayBuilder(int capacity, int maxCapacity, bool useSkipLists =true) {
             if (capacity>maxCapacity) {
                 throw new ArgumentOutOfRangeException("capacity", "Minimum capacity cannot be less than maximum capacity");
             }
@@ -490,21 +491,20 @@ namespace sharpeners {
             var newIndex = count + m_ChunkLength;
             if(newIndex <= m_ChunkValues.Length)
             {
-                Array.Copy(values, 0, m_ChunkValues, m_ChunkLength, count);
+                Array.Copy(values, startIndex, m_ChunkValues, m_ChunkLength, count);
                 m_ChunkLength += count;
             }else
             {
                 var firstSegmentLength = m_ChunkValues.Length - m_ChunkLength;
-
                 if(firstSegmentLength > 0){
-                    Array.Copy(values, 0, m_ChunkValues, m_ChunkLength, firstSegmentLength);
+                    Array.Copy(values, startIndex, m_ChunkValues, m_ChunkLength, firstSegmentLength);
                     m_ChunkLength += firstSegmentLength;
                 }
                 
                 var restLength = count - firstSegmentLength;
                 ExpandByABlock(restLength);
 
-                Array.Copy(values, firstSegmentLength, m_ChunkValues, 0, restLength);
+                Array.Copy(values, startIndex + firstSegmentLength, m_ChunkValues, 0, restLength);
                 m_ChunkLength = restLength;
             }
 
@@ -1267,8 +1267,9 @@ namespace sharpeners {
             m_ChunkValues = new T[size];
             m_MaxCapacity = maxCapacity;
             m_ChunkPrevious = previousBlock;
-            if (previousBlock != null)
+            if (previousBlock != null){
                 m_ChunkOffset = previousBlock.m_ChunkOffset + previousBlock.m_ChunkLength;
+            }
         }
 
         /// <summary>

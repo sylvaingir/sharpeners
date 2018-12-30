@@ -18,10 +18,10 @@ namespace sharpeners.tests
     public class StructArrayBuilder_Tests
     {
         [Fact]
-        public void ShouldReturnArrayAsExpected ()
+        public void ToArray()
         {
             //Arrange
-            var numberOfValuesPerPopulatingArrays = new int[]{12,89,123,1234578};
+            var numberOfValuesPerPopulatingArrays = new int[]{1000,20,1234,100000};
             var arrays = new List<decimal[]>();
             for(var i =0; i< numberOfValuesPerPopulatingArrays.Length; i++){
                 var number = numberOfValuesPerPopulatingArrays[i];
@@ -46,48 +46,49 @@ namespace sharpeners.tests
             Assert.Equal(expectedResult.Length, result.Length);
             Assert.Equal(expectedResult, result);            
             
+            Console.WriteLine("Ran StructArrayBuilder_Tests.ToArray");
         }
 
         [Fact]
-        public void Test_Read_SkipList(){
+        public void Read_SkipList(){
             TestAndTrack(true, action: "read", numValues: 50000);
-            Console.WriteLine("Ran Test_Read_SkipList");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Read_SkipList");
         }
         [Fact]
-        public void Test_Read_Normal(){
+        public void Read_Normal(){
             TestAndTrack(false, action: "read", numValues: 50000);
-            Console.WriteLine("Ran Test_Read_Normal");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Read_Normal");
         }
 
         [Fact]
-        public void Test_Insert_SkipList(){
+        public void Insert_SkipList(){
             TestAndTrack(true, action: "insert", numValues: 50000);
-            Console.WriteLine("Ran Test_Insert_SkipList");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Insert_SkipList");
         }
         [Fact]
-        public void Test_Insert_Normal(){
+        public void Insert_Normal(){
             TestAndTrack(false, action: "insert", numValues: 50000);
-            Console.WriteLine("Ran Test_Insert_Normal");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Insert_Normal");
         }
         [Fact]
-        public void Test_Remove_SkipList(){
+        public void Remove_SkipList(){
             TestAndTrack(true, action: "remove", numValues: 50000);
-            Console.WriteLine("Ran Test_Remove_SkipList");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Remove_SkipList");
         }
         [Fact]
-        public void Test_Remove_Normal(){
+        public void Remove_Normal(){
             TestAndTrack(false, action: "remove", numValues: 50000);
-            Console.WriteLine("Ran Test_Remove_Normal");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Remove_Normal");
         }
         [Fact]
-        public void Test_Replace_SkipList(){
+        public void Replace_SkipList(){
             TestAndTrack(true, action: "replace", numValues: 50000);
-            Console.WriteLine("Ran Test_Replace_SkipList");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Replace_SkipList");
         }
         [Fact]
-        public void Test_Replace_Normal(){
+        public void Replace_Normal(){
             TestAndTrack(false, action: "replace", numValues: 50000);
-            Console.WriteLine("Ran Test_Replace_Normal");
+            Console.WriteLine("Ran StructArrayBuilder_Tests.Replace_Normal");
         }
         
         public TestState<decimal> Arrange_PrepArrayAndAppend(
@@ -134,7 +135,7 @@ namespace sharpeners.tests
             var builder = prepdTest.Builder;
             var chunksToAction = prepdTest.NumberofChunksToAction;
             var expectedResult = prepdTest.ExpectedResult;
-
+            
             // Action
             switch(action){
                 case "insert":                    

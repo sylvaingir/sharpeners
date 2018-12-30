@@ -77,7 +77,7 @@ namespace sharpeners {
                 throw new ArgumentException("count and index define positions greater than buffer length");
     
             _buffer = new StructArrayBuilder<byte>(buffer, index, count, index + count);
-            _position = index;
+            _position = index + count;
             _writable = writable;
             _isOpen = true;
         }
@@ -132,12 +132,11 @@ namespace sharpeners {
     
         public override void Flush() {
         }
- 
-#if FEATURE_ASYNC_IO
+        
         public override Task FlushAsync(CancellationToken cancellationToken) {
  
             if (cancellationToken.IsCancellationRequested)
-                return Task.FromCancellation(cancellationToken);
+                return Task.FromCanceled(cancellationToken);
  
             try {
  
@@ -149,9 +148,7 @@ namespace sharpeners {
                 return Task.FromException(ex);
             }
         }
-#endif // FEATURE_ASYNC_IO
- 
- 
+         
         public virtual byte[] GetBuffer() {
             return _buffer.ToArray();
         }
@@ -425,9 +422,6 @@ namespace sharpeners {
             if (buffer.Length - offset < count)
                 throw new ArgumentException("count and offset define positions greater than buffer length");
  
-            if (!_isOpen){
-                throw new  ObjectDisposedException(null);
-            } 
             EnsureWriteable();
  
             int i = _position + count;
@@ -435,11 +429,7 @@ namespace sharpeners {
             if (i < 0){
                 throw new IOException("Cannot write to stream. Buffer would overflow");
             }
- 
-            if(_position < (int)Length -1){
-                _buffer.Remove(_position, (int)Length - _position);
-            }
-
+            
             _buffer.Append(buffer, offset, count);
 
             _position = i;
@@ -448,15 +438,6 @@ namespace sharpeners {
 
         public override Task WriteAsync(Byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            if (buffer == null)
-                throw new ArgumentNullException("buffer");
-            if (offset < 0)
-                throw new ArgumentOutOfRangeException("offset", "offset cannot be negative");
-            if (count < 0)
-                throw new ArgumentOutOfRangeException("count", "count cannot be negative");
-            if (buffer.Length - offset < count)
-                throw new ArgumentException("count and offset define positions greater than buffer length");
- 
             // If cancellation is already requested, bail early
             if (cancellationToken.IsCancellationRequested){ 
                 return Task.FromCanceled(cancellationToken); 
