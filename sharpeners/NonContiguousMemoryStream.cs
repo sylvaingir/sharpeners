@@ -39,7 +39,6 @@ namespace sharpeners {
             if (capacity < 0) {
                 throw new ArgumentOutOfRangeException("capacity", "capacity cannot be negative");
             }
-            Contract.EndContractBlock();
  
             _buffer = new StructArrayBuilder<byte>(capacity);
             _writable = true;
@@ -463,8 +462,8 @@ namespace sharpeners {
             } 
             EnsureWriteable();
             
-            _buffer[_position++] = value;
- 
+            _buffer.Append(value);
+            _position++;
         }
     
         // Writes this MemoryStream to another stream.

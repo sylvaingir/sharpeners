@@ -52,5 +52,84 @@ namespace sharpeners.tests
 
             Console.WriteLine("Ran NonContiguousMemoryStream_Tests.WriteAndRead");
         }
+
+
+        [Fact]
+        public async void WriteAndRead_Async ()
+        {
+            var randNum = new Random(DateTime.Now.Millisecond);
+            var expectedResult = Enumerable
+                    .Repeat(0, 10000)
+                    .Select(j => (byte)randNum.Next(0, 255))
+                    .ToArray();
+
+            var ncms = new NonContiguousMemoryStream();
+
+            var written = 0;
+            while(written < expectedResult.Length){
+                var toWrite = Math.Min( expectedResult.Length - written, 2048);
+                await ncms.WriteAsync(expectedResult, written, toWrite);
+                written += toWrite;
+            }
+
+            Assert.Equal(expectedResult.Length, written);
+            Assert.Equal(expectedResult.Length, ncms.Length);
+
+            var result = new byte[ncms.Length];
+            ncms.Position = 0;
+
+            var read = 0;
+            while(read < expectedResult.Length){
+                var toRead = Math.Min( expectedResult.Length - read, 1024);
+                var readBytes = await ncms.ReadAsync(result, read, toRead);
+                read += readBytes;
+            }
+
+            Assert.Equal(expectedResult.Length, read);
+
+            for(var i = 0; i < expectedResult.Length; i++){
+                Assert.Equal(expectedResult[i], result[i]);
+            }
+
+            Console.WriteLine("Ran NonContiguousMemoryStream_Tests.WriteAndRead_Async");
+        }
+
+
+        [Fact]
+        public void WriteByteAndReadByte ()
+        {
+            var randNum = new Random(DateTime.Now.Millisecond);
+            var expectedResult = Enumerable
+                    .Repeat(0, 1000)
+                    .Select(j => (byte)randNum.Next(0, 255))
+                    .ToArray();
+
+            var ncms = new NonContiguousMemoryStream();
+
+            var written = 0;
+            while(written < expectedResult.Length){
+                ncms.WriteByte(expectedResult[written]);
+                written++;
+            }
+
+            Assert.Equal(expectedResult.Length, written);
+            Assert.Equal(expectedResult.Length, ncms.Length);
+
+            var result = new byte[ncms.Length];
+            ncms.Position = 0;
+
+            var read = 0;
+            while(read < expectedResult.Length){
+                result[read++] = (byte)ncms.ReadByte();
+            }
+
+            Assert.Equal(expectedResult.Length, read);
+
+            for(var i = 0; i < expectedResult.Length; i++){
+                Assert.Equal(expectedResult[i], result[i]);
+            }
+
+            Console.WriteLine("Ran NonContiguousMemoryStream_Tests.WriteByteAndReadByte");
+        }
     }
 }

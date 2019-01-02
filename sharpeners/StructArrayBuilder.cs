@@ -437,6 +437,11 @@ namespace sharpeners {
             }
         }
 
+
+        // Appends an item at the end of this array builder. The capacity is adjusted as needed.
+        public StructArrayBuilder<T> Append(T value) {
+            return Append(value, 1);
+        }
         // Appends an item at the end of this array builder. The capacity is adjusted as needed.
         public StructArrayBuilder<T> Append(T value, int repeatCount) {
             if (repeatCount<0) {
@@ -512,7 +517,7 @@ namespace sharpeners {
         }
 
 
-        // Appends a copy of this string at the end of this array builder.
+        // Appends a copy of this array at the end of this array builder.
         
         public StructArrayBuilder<T> Append(T[] values) {
             if (values != null) {
